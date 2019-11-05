@@ -25,65 +25,64 @@ then
 fi
 
 # check if using the correct validation set
-if ! grep -q "allNounInfl.valid.underlying" ./scripts/validate.sh; then
+if ! grep -q "nounInfl.valid.underlying" scripts/validate.sh; then
     echo -e "\nHEY, validate.sh is not using the correct validation set"
     exit 1
 fi
 
 # check if data has been partitioned into training, validation, and test sets
-if [ ! -e "/nas/data/yupik/neural-analyzer/allNounInfl.train.tsv" ]
+if [ ! -e "data/nounInfl.train.tsv" ]
 then
-    ./scripts/partition_data.sh
+    scripts/partition_data.sh
 fi
 
-mkdir -p /nas/data/yupik/neural-analyzer/model
+mkdir -p data/model
 
 # preprocess data
-if [ ! -e "/nas/data/yupik/neural-analyzer/allNounInfl.train.underlying" ]
+if [ ! -e "data/nounInfl.train.underlying" ]
 then
-    ./scripts/tokenize_char.sh
-#    ./scripts/tokenize_grapheme.py
-#    ./scripts/tokenize_redoubled-grapheme.py
-#   ./scripts/tokenize_ipa.py
+    scripts/tokenize_char.sh
+#    scripts/tokenize_grapheme.py
+#    scripts/tokenize_redoubled-grapheme.py
+#    scripts/tokenize_ipa.py
 fi
 
 # train model
-if [ ! -e "/nas/data/yupik/neural-analyzer/model/model.npz.best-translation.npz" ]
+if [ ! -e "data/model/model.npz.best-translation.npz" ]
 then
     $MARIAN/build/marian \
         --devices $GPUS \
         --type amun \
-        --model /nas/data/yupik/neural-analyzer/model/model.npz \
-        --train-sets /nas/data/yupik/neural-analyzer/allNounInfl.train.surface /nas/data/yupik/neural-analyzer/allNounInfl.train.underlying \
-        --vocabs /nas/data/yupik/neural-analyzer/model/vocab.surface.yml /nas/data/yupik/neural-analyzer/model/vocab.underlying.yml \
+        --model data/model/model.npz \
+        --train-sets data/nounInfl.train.surface data/nounInfl.train.underlying \
+        --vocabs data/model/vocab.surface.yml data/model/vocab.underlying.yml \
         --dim-vocabs 0 0 \
         --mini-batch-fit -w 3000 \
         --layer-normalization --dropout-rnn 0.2 --dropout-src 0.1 --dropout-trg 0.1 \
         --early-stopping 5 \
         --valid-freq 10000 --save-freq 10000 --disp-freq 1000 \
         --valid-metrics cross-entropy translation \
-        --valid-sets /nas/data/yupik/neural-analyzer/allNounInfl.valid.surface /nas/data/yupik/neural-analyzer/allNounInfl.valid.underlying \
-        --valid-script-path ./scripts/validate.sh \
-        --log /nas/data/yupik/neural-analyzer/model/train.log --valid-log /nas/data/yupik/neural-analyzer/model/valid.log \
+        --valid-sets data/nounInfl.valid.surface data/nounInfl.valid.underlying \
+        --valid-script-path scripts/validate.sh \
+        --log data/model/train.log --valid-log data/model/valid.log \
         --overwrite --keep-best \
         --seed 1111 --exponential-smoothing \
         --normalize=1 --beam-size=12 --quiet-translation
 fi
 
 # translate test set with n-best lists
-#cat data/allNounInfl.testset.surface \
+#cat data/nounInfl.testset.surface \
 #    | $MARIAN/build/marian-decoder -c model/model.npz.best-translation.npz.decoder.yml -d $GPUS -b 12 -n1 \
 #      --mini-batch 64 --maxi-batch 10 --maxi-batch-sort src --n-best \
 #    | ../tools/moses-scripts/scripts/tokenizer/detokenizer.perl -l en \
-#    > data/allNounInfl.testset.nbest
+#    > data/nounInfl.testset.nbest
 
 # translate test set
-cat /nas/data/yupik/neural-analyzer/allNounInfl.testset.surface \
-    | $MARIAN/build/marian-decoder -c /nas/data/yupik/neural-analyzer/model/model.npz.best-translation.npz.decoder.yml -d $GPUS -b 12 -n1 \
+cat data/nounInfl.testset.surface \
+    | $MARIAN/build/marian-decoder -c data/model/model.npz.best-translation.npz.decoder.yml -d $GPUS -b 12 -n1 \
       --mini-batch 64 --maxi-batch 10 --maxi-batch-sort src \
     | ../tools/moses-scripts/scripts/tokenizer/detokenizer.perl -l en \
-    > /nas/data/yupik/neural-analyzer/allNounInfl.testset.output
+    > data/nounInfl.testset.output
 
 # calculate WER
-#./scripts/get_POS-WER.py
-./scripts/get_WER.py
+scripts/get_WER.py
